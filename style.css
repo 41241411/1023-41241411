@@ -1,0 +1,56 @@
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #f0f0f0;
+    font-family: Arial, sans-serif;
+}
+
+h1, h2 {
+    background-color: #0095DD;
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+#gameContainer {
+    padding: 20px;
+    background-color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+canvas {
+    background-color: white;
+    border: 2px solid #000;
+}
+
+body.night-sky {
+    background-image: url('img/night-sky.jpg');
+    background-size: cover;
+    background-position: center;
+}
+
+body.forest {
+    background-image: url('img/forest.jpg');
+    background-size: cover;
+    background-position: center;
+}
+
+#instructions, #cooldownDisplay {
+    display: inline-block;
+    font-size: 16px;
+    margin-top: 10px;
+    color: #333;
+    vertical-align: middle; /* 垂直对齐 */
+}
+
+#cooldownDisplay {
+    color: red;
+    visibility: hidden; /* 初始为隐藏，仅内容不可见 */
+    margin-left: 10px; /* 增加间距 */
+}
