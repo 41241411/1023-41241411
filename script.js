@@ -2,11 +2,43 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
+const themes = {
+    default: "#ffffff", // 预设背景颜色
+    "night-sky": "img/night-sky.jpg", // 夜空背景
+    forest: "img/forest.jpg" // 森林背景
+};
+
+let currentTheme = "default";
+let backgroundImage = new Image();
+backgroundImage.src = themes[currentTheme];
+
+// 监听下拉菜单的变化
+document.getElementById("backgroundTheme").addEventListener("change", (event) => {
+    currentTheme = event.target.value;
+
+    // 根据选择的主题设置背景
+    if (currentTheme === "default") {
+        backgroundImage = null; // 不使用图片
+    } else {
+        backgroundImage.src = themes[currentTheme]; // 设置为对应的背景图片
+    }
+});
+
+// 绘制背景的函数
+function drawBackground() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (currentTheme === "default") {
+        ctx.fillStyle = themes.default; // 预设颜色
+        ctx.fillRect(0, 0, canvas.width, canvas.height); // 填充背景颜色
+    } else if (backgroundImage) {
+        ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height); // 绘制背景图
+    }
+}
+
 // 获取音频元素
 const backgroundMusic = document.getElementById("backgroundMusic");
 const hitSound = document.getElementById("hitSound");
 const jump = document.getElementById("jump");
-
 
 let ballRadius = 10;
 let x = canvas.width / 2;
@@ -45,7 +77,7 @@ let difficulty; // 宣告 difficulty 為全局變數
 
 let paddleY = canvas.height - paddleHeight; // 初始化桿子Y坐标
 let isJumping = false; // 跳跃状态
-let isCoolingDown = false;     // 是否处于冷却状态
+let isCoolingDown = false; // 是否处于冷却状态
 let cooldownDuration = 3; // 冷却时间，单位为秒
 let remainingCooldown = 0; // 剩余冷却时间
 let jumpHeight = 40; // 跳跃高度
@@ -54,8 +86,8 @@ let jumpY = 0; // 当前跳跃偏移量
 
 let score = 0; // 移动到此处，避免重复声明
 let comboCount = 0; // 当前连击次数
-let comboThreshold = 3;  // 连击阈值
-let comboScoreMultiplier = 1;  // 连击加分倍数
+let comboThreshold = 3; // 连击阈值
+let comboScoreMultiplier = 1; // 连击加分倍数
 let lives = 3; // 生命值
 
 let powerUps = []; // 存储道具的数组
@@ -73,13 +105,16 @@ let timeChallengeMode = false; // 用於跟踪是否進入時間挑戰模式
 let timeLimit; // 限定時間
 let remainingTime; // 剩餘時間
 
+const explosionGif = new Image();
+explosionGif.src = "img/explosions.gif"; // 替换为GIF的路径
+let explosions = [];
 
 function keyDownHandler(e) {
     if (e.key === "Right" || e.key === "ArrowRight") {
         rightPressed = true;
     } else if (e.key === "Left" || e.key === "ArrowLeft") {
         leftPressed = true;
-    } 
+    }
 }
 
 document.getElementById("timeChallengeButton").addEventListener("click", () => {
@@ -128,7 +163,6 @@ document.getElementById("timeChallengeButton").addEventListener("click", () => {
     }
 });
 
-
 function startTimeChallenge() {
     difficulty = document.getElementById("difficulty").value; // 使用選擇的難度
 
@@ -156,13 +190,25 @@ function collisionDetection() {
             const b = bricks[c][r];
             if (b.status === 1) {
                 allBricksCleared = false;
-                if (x > b.x && x < b.x + brickWidth && y > b.y && y < b.y + brickHeight) {
+                if (
+                    x > b.x &&
+                    x < b.x + brickWidth &&
+                    y > b.y &&
+                    y < b.y + brickHeight
+                ) {
                     dy = -dy; // 反弹逻辑
-                    
+                    hitSound.play();
                     // 每次碰撞都增加连击计数
                     comboCount++;
-                    console.log("Combo increased to: " + comboCount); // 调试输出
-                    
+                    explosions.push(
+                        new Explosion(b.x + brickWidth / 2, b.y + brickHeight / 2)
+                    ); // 添加爆炸效果
+                    // 连击处理
+                    let additionalScore = 1; // 默认加分
+                    if (comboCount > 3) {
+                        additionalScore = 2; // 连击超过3次的加分
+                    }
+                    score += additionalScore; // 更新分数
                     if (b.opacity === 0) {
                         b.opacity = 1; // 设置为可见
                         b.color = getColor(b.hitsRequired);
@@ -172,17 +218,14 @@ function collisionDetection() {
                         if (b.hitsRequired <= 0) {
                             b.status = 0; // 砖块被击破
 
-                            // 连击处理
-                            let additionalScore = 1;  // 默认加分
-                            if (comboCount > 3) {
-                                additionalScore = 2;  // 连击超过3次的加分
-                            }
-                            score += additionalScore;  // 更新分数
-
                             // 随机掉落道具
                             if (Math.random() < 0.1) {
                                 const powerUpType = Math.random() < 0.5 ? "expand" : "speedUp";
-                                createPowerUp(b.x + brickWidth / 2, b.y + brickHeight / 2, powerUpType);
+                                createPowerUp(
+                                    b.x + brickWidth / 2,
+                                    b.y + brickHeight / 2,
+                                    powerUpType
+                                );
                             }
                         }
                     }
@@ -196,18 +239,21 @@ function collisionDetection() {
     }
 }
 
-
 function updateBall() {
     // 更新球的位置
     x += dx;
     y += dy;
 
     // 检查与桿子的碰撞
-    if (y + ballRadius >= paddleY && y + ballRadius <= paddleY + paddleHeight && x > paddleX && x < paddleX + paddleWidth) {
+    if (
+        y + ballRadius >= paddleY &&
+        y + ballRadius <= paddleY + paddleHeight &&
+        x > paddleX &&
+        x < paddleX + paddleWidth
+    ) {
         dy = -Math.abs(dy); // 让球向上反弹
         y = paddleY - ballRadius; // 确保球在桿子上方，避免卡住
-        comboCount = 0;  // 碰到桿子时重置连击计数
-        
+        comboCount = 0; // 碰到桿子时重置连击计数
     }
 
     // 处理边界检测
@@ -220,15 +266,16 @@ function updateBall() {
 
     // 检查球是否落到最底部
     if (y + ballRadius > canvas.height) {
+        comboCount = 0;
         lives--; // 减少生命
         resetBall(); // 重置球的位置
         resetPaddle(); // 重置桿子的位置
         ballLaunched = false; // 重置发射状态
         draw();
-        
+
         // 检查是否还有生命
         if (lives <= 0) {
-            gameOver("游戏结束！分数: " + score);
+            gameOver("遊戲结束！分数: " + score);
         }
     }
 }
@@ -238,10 +285,10 @@ function handleJump() {
         if (jumpY > 0) {
             paddleY -= jumpSpeed; // 桿子上升
             jump.play(); // 播放背景音乐
-            jumpY -= jumpSpeed;   // 减少跳跃偏移
+            jumpY -= jumpSpeed; // 减少跳跃偏移
         } else {
             paddleY += jumpSpeed; // 桿子下落
-            
+
             if (paddleY >= canvas.height - paddleHeight) {
                 paddleY = canvas.height - paddleHeight; // 确保桿子回到原位
                 isJumping = false; // 完成跳跃
@@ -256,7 +303,7 @@ function handleJump() {
 function startCooldown() {
     isCoolingDown = true;
     remainingCooldown = cooldownDuration;
-    
+
     const cooldownInterval = setInterval(() => {
         remainingCooldown -= 0.1; // 每100ms减少冷却时间0.1秒
         updateCooldownDisplay();
@@ -281,34 +328,30 @@ function updateCooldownDisplay() {
     }
 }
 
-
 // 更新球的速度的函数
 function resetBall() {
     x = canvas.width / 2;
     y = canvas.height - paddleHeight - ballRadius; // 确保球在桿子上方
     switch (difficulty) {
         case "easy":
-            dx = 1; 
+            dx = 1;
             dy = -1;
             break;
         case "medium":
-            dx = 2; 
-            dy = -2;
+            dx = 3;
+            dy = -3;
             break;
         case "hard":
-            dx = 3; 
-            dy = -3;
+            dx = 5;
+            dy = -5;
             break;
     }
 }
-
 
 function resetPaddle() {
     paddleX = (canvas.width - paddleWidth) / 2; // 重新设置桿子位置到初始位置
     paddleY = canvas.height - paddleHeight; // 确保桿子回到底部
 }
-
-
 
 // 绘制桿子
 function drawPaddle() {
@@ -318,8 +361,6 @@ function drawPaddle() {
     ctx.fill();
     ctx.closePath();
 }
-
-
 
 document.getElementById("startButton").addEventListener("click", startGame);
 canvas.addEventListener("mousemove", mouseMoveHandler);
@@ -334,16 +375,16 @@ function startGame() {
     // 根据难度设置游戏参数
     switch (difficulty) {
         case "easy":
-            brickRowCount = 3; 
-            brickColumnCount = 11; 
+            brickRowCount = 3;
+            brickColumnCount = 11;
             break;
         case "medium":
-            brickRowCount = 5; 
-            brickColumnCount = 11; 
+            brickRowCount = 5;
+            brickColumnCount = 11;
             break;
         case "hard":
-            brickRowCount = 7; 
-            brickColumnCount = 11; 
+            brickRowCount = 7;
+            brickColumnCount = 11;
             break;
     }
 
@@ -357,7 +398,7 @@ function startGame() {
 
     document.getElementById("startScreen").style.display = "none";
     document.getElementById("gameScreen").style.display = "block";
-    
+
     resetBall(); // 重置球的位置
     ballLaunched = false; // 设置球为未发射状态
     backgroundMusic.play(); // 播放背景音乐
@@ -381,7 +422,7 @@ function resetBricks() {
                     status: 1,
                     hitsRequired: hitsRequired,
                     color: "#0095DD", // 确保颜色为蓝色
-                    opacity: 1 // 完全可见
+                    opacity: 1, // 完全可见
                 };
             } else if (difficulty === "medium") {
                 hitsRequired = random < 0.6 ? 1 : 2;
@@ -391,9 +432,10 @@ function resetBricks() {
                     status: 1,
                     hitsRequired: hitsRequired,
                     color: getColor(hitsRequired),
-                    opacity: random < 0.2 ? 0 : 1 // 20% 概率设置为透明
+                    opacity: random < 0.2 ? 0 : 1, // 20% 概率设置为透明
                 };
-            } else { // 困难难度
+            } else {
+                // 困难难度
                 hitsRequired = random < 0.2 ? 3 : 2; // 大部分为 2，少量为 3
                 bricks[c][r] = {
                     x: 0,
@@ -401,7 +443,7 @@ function resetBricks() {
                     status: 1,
                     hitsRequired: hitsRequired,
                     color: getColor(hitsRequired),
-                    opacity: random < 0.2 ? 0 : 1 // 20% 概率设置为透明
+                    opacity: random < 0.2 ? 0 : 1, // 20% 概率设置为透明
                 };
             }
         }
@@ -416,13 +458,13 @@ function generatePowerUp(x) {
     powerUps.push(powerUp);
 }
 
-
-
-
 function mouseMoveHandler(e) {
     const relativeX = e.clientX - canvas.offsetLeft;
     // 限制桿子的移动范围
-    if (relativeX > paddleWidth / 2 && relativeX < canvas.width - paddleWidth / 2) {
+    if (
+        relativeX > paddleWidth / 2 &&
+        relativeX < canvas.width - paddleWidth / 2
+    ) {
         paddleX = relativeX - paddleWidth / 2;
         if (!ballLaunched) {
             x = paddleX + paddleWidth / 2; // 更新球的位置以跟随桿子
@@ -442,7 +484,7 @@ function mouseDownHandler(e) {
         jumpY = jumpHeight; // 开始跳跃
         startCooldown(); // 启动冷却计时器
     }
-    
+
     // 如果球未发射且生命值大于0，按左键可以发射球（button 为 0 表示左键）
     if (e.button === 0 && !ballLaunched && lives > 0) {
         ballLaunched = true;
@@ -510,7 +552,11 @@ function drawBricks() {
                 if (b.hitsRequired > 0) {
                     ctx.fillStyle = "white";
                     ctx.font = "12px Arial";
-                    ctx.fillText(b.hitsRequired, brickX + brickWidth / 2 - 8, brickY + brickHeight / 2 + 4);
+                    ctx.fillText(
+                        b.hitsRequired,
+                        brickX + brickWidth / 2 - 8,
+                        brickY + brickHeight / 2 + 4
+                    );
                 }
             }
         }
@@ -534,48 +580,6 @@ function checkPowerUpCollision() {
     });
 }
 
-
-
-
-// 播放打击音效
-// 在 collisionDetection 中檢測球是否觸發隱藏磚塊顯示
-function collisionDetection() {
-    let allBricksCleared = true;
-    for (let c = 0; c < brickColumnCount; c++) {
-        for (let r = 0; r < brickRowCount; r++) {
-            const b = bricks[c][r];
-            if (b.status === 1) {
-                allBricksCleared = false;
-                if (x > b.x && x < b.x + brickWidth && y > b.y && y < b.y + brickHeight) {
-                    dy = -dy; // 反弹逻辑
-                    if (b.opacity === 0) {
-                        b.opacity = 1; // 设置为可见
-                        b.color = getColor(b.hitsRequired);
-                    } else {
-                        b.hitsRequired--;
-                        b.color = getColor(b.hitsRequired);
-                        if (b.hitsRequired <= 0) {
-                            b.status = 0; // 砖块被击破
-                            score++;
-
-                            // 随机掉落道具
-                            if (Math.random() < 0.1) {
-                                const powerUpType = Math.random() < 0.5 ? "expand" : "speedUp";
-                                createPowerUp(b.x + brickWidth / 2, b.y + brickHeight / 2, powerUpType);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (allBricksCleared) {
-        gameOver("恭喜！你赢了！分数: " + score);
-    }
-}
-
-
 class PowerUp {
     constructor(type, x, y) {
         this.type = type;
@@ -598,13 +602,39 @@ class PowerUp {
     }
 }
 
+class Explosion {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.lifetime = 60; // 爆炸持续的帧数，控制GIF的显示时间
+        this.currentFrame = 0; // 当前帧索引
+        this.isActive = true; // 爆炸是否活跃
+    }
 
+    update() {
+        if (this.currentFrame < this.lifetime) {
+            this.currentFrame++;
+        } else {
+            this.isActive = false; // 爆炸结束
+        }
+    }
+
+    draw(ctx) {
+        if (this.isActive) {
+            ctx.drawImage(
+                explosionGif,
+                this.x - explosionGif.width / 2,
+                this.y - explosionGif.height / 2
+            );
+        }
+    }
+}
 
 function gameOver(message) {
     if (timeChallengeMode) {
         message += " (時間挑戰模式)";
     }
-    document.getElementById("gameOverModal").style.display = "flex"; 
+    document.getElementById("gameOverModal").style.display = "flex";
     document.getElementById("gameOverMessage").innerText = message;
 }
 
@@ -612,6 +642,15 @@ function drawScore() {
     ctx.font = "16px Arial";
     ctx.fillStyle = "#0095DD";
     ctx.fillText("得分: " + score, 8, 20);
+
+    return ctx.measureText("得分: " + score).width; // 返回得分文本的宽度
+}
+
+// 绘制连击数
+function drawCombo() {
+    ctx.font = "16px Arial";
+    ctx.fillStyle = "#FF5733"; // 连击颜色
+    ctx.fillText("連擊数: " + comboCount, 8 + scoreWidth + 20, 20);
 }
 
 function drawLives() {
@@ -620,9 +659,16 @@ function drawLives() {
     ctx.fillText("生命: " + lives, canvas.width - 65, 20);
 }
 
+function drawCombo() {
+    ctx.font = "16px Arial";
+    ctx.fillStyle = "#0095DD";
+    ctx.fillText("連擊: " + comboCount, canvas.width - 800, 20);
+}
+
 function drawPowerUps() {
     powerUps.forEach((powerUp, index) => {
-        if (powerUp instanceof PowerUp) { // 确保是 PowerUp 的实例
+        if (powerUp instanceof PowerUp) {
+            // 确保是 PowerUp 的实例
             powerUp.update();
             powerUp.draw(ctx);
             // 检查是否需要移除道具
@@ -633,13 +679,10 @@ function drawPowerUps() {
     });
 }
 
-
-
-
 function applyPowerUp(type) {
     if (type === "expand") {
         paddleWidth *= 1.5; // 扩大挡板
-        powerUpStatus = "挡板扩大中";
+        powerUpStatus = "擋板放大中";
         powerUpRemaining = 10; // 设置剩余时间
         powerUpActive = true; // 標記為有效
         setTimeout(() => {
@@ -649,7 +692,7 @@ function applyPowerUp(type) {
     } else if (type === "speedUp") {
         dx *= 1.5; // 加速球
         dy *= 1.5;
-        powerUpStatus = "球速提升中";
+        powerUpStatus = "速度提升中";
         powerUpRemaining = 10; // 设置剩余时间
         powerUpActive = true; // 標記為有效
         setTimeout(() => {
@@ -664,7 +707,9 @@ function updatePowerUpDisplay() {
     const powerUpDisplay = document.getElementById("powerUpStatus");
     if (powerUpActive) {
         powerUpDisplay.style.visibility = "visible";
-        powerUpDisplay.textContent = `${powerUpStatus} 剩余: ${powerUpRemaining.toFixed(1)} 秒`;
+        powerUpDisplay.textContent = `${powerUpStatus} 剩余: ${powerUpRemaining.toFixed(
+            1
+        )} 秒`;
         powerUpRemaining -= 0.01; // 每100ms减少剩余时间
 
         if (powerUpRemaining <= 0) {
@@ -688,17 +733,18 @@ function restartGame() {
     resetBricks(); // 根據難度重置磚塊
     document.getElementById("gameScreen").style.display = "block"; // 顯示遊戲畫面
     draw(); // 開始繪製遊戲畫面
-
 }
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawBackground(); // 绘制背景
     drawBricks();
     drawBall();
     drawPaddle();
     drawScore();
     drawLives();
-    drawCombo();  // 绘制连击数
+    const scoreWidth = drawScore(); // 绘制得分并获取宽度
+    drawCombo(scoreWidth); // 传入得分宽度绘制连击数
     drawPowerUps(); // 繪製道具
     collisionDetection();
     checkPowerUpCollision(); // 檢查道具碰撞
@@ -714,34 +760,40 @@ function draw() {
     if (timeChallengeMode) {
         ctx.font = "16px Arial";
         ctx.fillStyle = "#0095DD";
-    
+
         // 计算文本的宽度
         const text = `剩餘時間: ${remainingTime.toFixed(1)} 秒`;
         const textWidth = ctx.measureText(text).width;
-    
+
         // 将文本绘制在画布的中心最上方
         ctx.fillText(text, (canvas.width - textWidth) / 2, 20);
-    
+
         // 更新剩餘時間
         remainingTime -= 0.01; // 每帧减少时间
+        if (lives <= 0) {
+            gameOver("遊戲结束！分数: " + score); // 显示生命为0的提示
+            return; // 结束游戏
+        }
         if (remainingTime <= 0) {
             resetBall(); // 重置球的位置
             ballLaunched = false; // 停止球
-            gameOver("时间到！分数: " + score);
+            gameOver("時間到！分数: " + score);
             return; // 结束游戏
+        }
+    }
+
+    for (let i = explosions.length - 1; i >= 0; i--) {
+        const explosion = explosions[i];
+        explosion.update();
+        explosion.draw(ctx);
+
+        if (!explosion.isActive) {
+            explosions.splice(i, 1); // 移除已完成的爆炸效果
         }
     }
 
     requestAnimationFrame(draw);
 }
-
-// 绘制连击数
-function drawCombo() {
-    ctx.font = "16px Arial";
-    ctx.fillStyle = "#FF5733";  // 连击颜色
-    ctx.fillText("連擊数: " + comboCount, 8, 40);
-}
-
 
 function returnToMainMenu() {
     document.getElementById("gameOverModal").style.display = "none";
@@ -760,7 +812,9 @@ function resetGame() {
 }
 
 document.getElementById("restartButton").addEventListener("click", restartGame);
-document.getElementById("mainMenuButton").addEventListener("click", returnToMainMenu);
+document
+    .getElementById("mainMenuButton")
+    .addEventListener("click", returnToMainMenu);
 document.getElementById("startButton").addEventListener("click", startGame);
 canvas.addEventListener("mousemove", mouseMoveHandler);
 canvas.addEventListener("mousedown", mouseDownHandler);
